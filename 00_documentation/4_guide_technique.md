@@ -21,6 +21,7 @@ pip install -r requirements.txt
 |---|---|
 | pandas, pyarrow | Manipulation et format Parquet |
 | DuckDB | Entrepôt analytique local, lecture native du Parquet |
+| statsmodels | Décomposition STL, stationnarité, ARIMA/SARIMA |
 | scikit-learn, XGBoost | Modélisation |
 | matplotlib, seaborn | Visualisation |
 | Streamlit | Application web |
@@ -56,7 +57,7 @@ horaire ne doit jamais y être chargé.**
 
 ## 4. La règle la plus importante : une seule fonction de features
 
-`build_features(df, horizon)` vit dans `05_machine_learning/features.py`. Elle
+`build_features(df, horizon)` vit dans `06_machine_learning/features.py`. Elle
 est importée par le script d'entraînement **et** par l'application.
 
 Cette logique n'est **jamais** dupliquée, ni recopiée, ni réécrite « en plus
@@ -93,7 +94,33 @@ train, test = train_test_split(df, test_size=0.2)
 Signal d'alerte : un R² supérieur à 0,95 sur une prévision à 24 h. Ce n'est
 presque jamais un bon modèle, c'est presque toujours une fuite.
 
-## 6. Secrets
+## 6. Vingt-quatre séries parallèles : toujours grouper
+
+Le jeu empile 24 séries dans un même tableau. Toute opération temporelle —
+décalage, fenêtre glissante, différenciation — doit être effectuée **par
+gouvernorat** :
+
+```python
+# CORRECT
+df.groupby("gouvernorat")["temperature_2m"].shift(24)
+
+# FAUX : les premieres lignes de Ben Arous recuperent
+# les dernieres heures d'Ariana
+df["temperature_2m"].shift(24)
+```
+
+L'erreur est **silencieuse** : aucune exception n'est levée, seules les valeurs
+aux frontières entre gouvernorats sont contaminées. Sur 24 séries et 168 heures
+de profondeur, cela représente environ 4 000 lignes fausses noyées dans 1,58
+million. Un contrôle dédié figure dans `01_etl/checks.py`.
+
+Corollaire : ces 1,58 M de lignes ne sont pas 1,58 M d'observations
+indépendantes. À une heure donnée les 24 séries sont fortement corrélées, et
+les quatre gouvernorats du Grand Tunis partagent des points de grille quasi
+confondus. La taille d'échantillon effective est bien inférieure au nombre de
+lignes — à garder en tête avant de conclure sur un petit écart de performance.
+
+## 7. Secrets
 
 La chaîne de connexion Supabase est lue depuis `.env`, jamais inscrite en dur.
 
@@ -109,22 +136,22 @@ SUPABASE_PASSWORD=...
 attendues sans les valeurs. Sur Streamlit Cloud, ces valeurs passent par les
 *secrets* de la plateforme.
 
-## 7. Ce qui est versionné, et ce qui ne l'est pas
+## 8. Ce qui est versionné, et ce qui ne l'est pas
 
 | Élément | Versionné | Raison |
 |---|---|---|
 | `data/*.parquet` | Oui | 42 Mo, données publiques, rend le dépôt autonome |
 | `data/*.csv` | Non | ~308 Mo, redondants avec le Parquet |
 | `*.duckdb` | Non | Se régénère depuis le Parquet |
-| `05_machine_learning/models/` | Non | Se régénère par entraînement |
-| `06_web_app/models/` | **Oui** | Streamlit Cloud déploie depuis le dépôt |
+| `06_machine_learning/models/` | Non | Se régénère par entraînement |
+| `07_web_app/models/` | **Oui** | Streamlit Cloud déploie depuis le dépôt |
 | `.env` | Non | Secrets |
 
 La distinction sur les modèles est délibérée : le modèle servi par
 l'application doit être présent dans le dépôt, sans quoi le déploiement n'a
 rien à charger.
 
-## 8. Workflow Git
+## 9. Workflow Git
 
 - Branche principale : `main`.
 - Commits réguliers et descriptifs, en français.
@@ -133,7 +160,7 @@ rien à charger.
 - Les fichiers volumineux passent par `.gitignore`, jamais par Git LFS — le
   Parquet compressé suffit.
 
-## 9. Reproductibilité
+## 10. Reproductibilité
 
 Un tiers doit pouvoir cloner le dépôt et refaire tourner l'analyse sans
 demander quoi que ce soit :

@@ -42,7 +42,8 @@ non négociables :
 |---|---|---|
 | Découpage | Aléatoire stratifié | Chronologique strict |
 | Fuite de données | Variables encodant la cible | Variables postérieures à l'instant de prédiction |
-| Référence | Classe majoritaire, tirage au hasard | Persistance et climatologie |
+| Référence | Classe majoritaire, tirage au hasard | Persistance, climatologie, ARIMA |
+| Structure | Observations indépendantes | 24 séries parallèles, fortement corrélées |
 
 Un découpage aléatoire placerait des observations futures dans l'entraînement
 et produirait des scores flatteurs mais faux. Un modèle qui utiliserait la
@@ -76,18 +77,34 @@ partie utile à l'application déployée.
 Produire un rapport Power BI sur la climatologie tunisienne : profils
 mensuels, contrastes régionaux, extrêmes, précipitations.
 
-### 4.4 Data mining
+### 4.4 Data mining — dimension spatiale
 
 Regrouper les gouvernorats par profil climatique via ACP et K-means. Le
 regroupement obtenu alimente ensuite les modèles prédictifs.
 
-### 4.5 Machine learning
+### 4.5 Séries temporelles — dimension temporelle
+
+Décomposer les séries (tendance, saisonnalités, résidu), tester la
+stationnarité, et analyser l'autocorrélation. L'autocorrélation partielle sert
+directement à **justifier le choix des décalages** utilisés en modélisation, au
+lieu de les poser par intuition.
+
+Trois modèles statistiques en progression — ARIMA, puis SARIMA à période
+diurne, puis régression harmonique de Fourier avec erreurs ARIMA — qui
+deviennent des concurrents à part entière des modèles de machine learning.
+
+### 4.6 Machine learning
 
 Construire les variables explicatives sans fuite temporelle, comparer plusieurs
-familles de modèles à trois horizons, les évaluer face à deux baselines
-météorologiques.
+familles de modèles à trois horizons, les évaluer face aux baselines naïves et
+aux modèles statistiques, puis retenir le meilleur.
 
-### 4.6 Application web
+Un **modèle global** par horizon est entraîné sur les 24 gouvernorats empilés,
+plutôt que 24 modèles locaux : le volume d'entraînement est vingt-quatre fois
+supérieur, la physique atmosphérique apprise est commune, et les spécificités
+locales restent portées par la latitude, l'altitude et le groupe climatique.
+
+### 4.7 Application web
 
 Déployer une application où l'utilisateur choisit un gouvernorat et un horizon,
 reçoit une prévision calculée à partir de données fraîches, et peut la comparer

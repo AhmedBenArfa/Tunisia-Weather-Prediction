@@ -28,14 +28,16 @@ de la fuite temporelle — structurent toute la conception.
 | Data Understanding | `01_etl/` | Extraction, contrôles qualité, EDA |
 | Data Preparation | `02_data_warehouse/` | Nettoyage, schéma en étoile, agrégats |
 | — (restitution descriptive) | `03_power_bi/` | Rapport Power BI, mesures DAX |
-| Data Understanding (approfondi) | `04_data_mining/` | ACP, clustering climatique |
-| Modeling | `05_machine_learning/` | Features, entraînement, comparaison |
-| Evaluation | `05_machine_learning/` | Métriques par horizon, écart aux baselines |
-| Deployment | `06_web_app/` | Application Streamlit + journalisation |
+| Data Understanding (spatial) | `04_data_mining/` | ACP, clustering climatique |
+| Data Understanding (temporel) | `05_series_temporelles/` | STL, stationnarité, ACF/PACF, ARIMA/SARIMA/Fourier |
+| Modeling | `06_machine_learning/` | Features, entraînement, comparaison |
+| Evaluation | `06_machine_learning/` | Métriques par horizon, écart aux baselines |
+| Deployment | `07_web_app/` | Application Streamlit + journalisation |
 
-Le data mining précède volontairement le machine learning : les groupes
-climatiques qu'il fait émerger deviennent une variable candidate
-(`cluster_climatique`) pour les modèles.
+Les deux phases d'analyse précèdent volontairement la modélisation, parce que
+chacune produit quelque chose qu'elle consomme : le clustering fournit
+`cluster_climatique`, l'analyse temporelle justifie le choix des décalages par
+la PACF au lieu de les poser par intuition.
 
 ## 3. Données
 
@@ -102,10 +104,11 @@ Open-Meteo fournit les entrées fraîches, Supabase enregistre le résultat.
 02_data_warehouse/  Schéma en étoile DuckDB, exports Parquet, pont Supabase
 03_power_bi/        Rapport .pbix, mesures DAX, captures
 04_data_mining/     ACP, clustering climatique des gouvernorats
-05_machine_learning/ features.py, entraînement multi-horizon, modèles
-06_web_app/         Application Streamlit, journalisation Supabase
-07_rapport/         Documentation technique et rapport final (PDF)
-08_presentation/    Slides HTML
+05_series_temporelles/ STL, stationnarité, ACF/PACF, ARIMA/SARIMA/Fourier
+06_machine_learning/ features.py, entraînement multi-horizon, modèles
+07_web_app/         Application Streamlit, journalisation Supabase
+08_rapport/         Documentation technique et rapport final (PDF)
+09_presentation/    Slides HTML
 data/               Parquet versionné ; CSV bruts ignorés
 docs/conception/    Documents de conception
 ```
@@ -128,16 +131,76 @@ week-end, ainsi que les encodages cycliques réutilisés par le modèle.
 par jour. C'est cette table, et elle seule, qui alimente Supabase et le
 rapport Power BI en ligne.
 
-## 7. Feature engineering
+## 7. Structure des données et portée du modèle
 
-### 7.1 Principe
+### 7.1 Vingt-quatre séries parallèles, un modèle global
+
+Les 24 gouvernorats constituent **24 séries temporelles parallèles**, partageant
+le même calendrier mais dotées chacune de sa dynamique. C'est une structure de
+panel, et deux stratégies s'offraient.
+
+| | Modèle global (retenu) | 24 modèles locaux |
+|---|---|---|
+| Lignes d'entraînement | 1 585 728 | 66 072 chacun |
+| Modèles à produire | 3 | 72 |
+| Spécificités locales | Via lat/lon/altitude/cluster | Apprises directement |
+| Poids au déploiement | 3 fichiers | 72 fichiers versionnés |
+
+Le **modèle global** est retenu, pour trois raisons.
+
+Le volume d'entraînement est vingt-quatre fois supérieur, et la relation
+physique apprise est commune : l'influence de la pression, du rayonnement et de
+l'inertie thermique du sol sur la température ne dépend pas du gouvernorat.
+
+Les spécificités locales ne sont pas perdues pour autant : latitude, longitude,
+altitude et `cluster_climatique` les portent explicitement. Kef à 637 m et
+Tozeur à 50 m sont distingués par ces variables.
+
+Enfin le déploiement : une forêt aléatoire entraînée sur ces volumes pèse
+plusieurs dizaines de mégaoctets ; multipliée par 72, elle saturerait le dépôt.
+
+L'évaluation est **ventilée par gouvernorat** afin de vérifier qu'aucun n'est
+systématiquement mal servi par le modèle commun. Un écart marqué sur un
+gouvernorat particulier serait un résultat à documenter, pas à masquer.
+
+### 7.2 Conséquence technique impérative
+
+Toute opération temporelle doit être effectuée **par gouvernorat** :
+
+```python
+# CORRECT
+df.groupby("gouvernorat")["temperature_2m"].shift(24)
+
+# FAUX
+df["temperature_2m"].shift(24)
+```
+
+Un décalage global ferait récupérer aux premières heures de chaque gouvernorat
+les dernières heures du gouvernorat précédent dans l'ordre de tri. L'erreur est
+**silencieuse** — aucune exception, seulement des valeurs contaminées aux
+frontières. Sur 24 séries et 168 heures de profondeur maximale, cela représente
+environ 4 000 lignes fausses. Un contrôle dédié figure dans `01_etl/checks.py`.
+
+### 7.3 Indépendance des observations
+
+Les 1 585 728 lignes ne constituent pas 1 585 728 observations indépendantes. À
+une heure donnée, les 24 gouvernorats sont fortement corrélés, et les quatre du
+Grand Tunis sont quasiment le même point de grille. La taille d'échantillon
+effective est très inférieure au nombre de lignes.
+
+Cela n'invalide pas l'approche mais impose de la prudence dans l'interprétation
+de petits écarts de performance entre modèles.
+
+## 8. Feature engineering
+
+### 8.1 Principe
 
 Une seule fonction `build_features(df, horizon)` dans
-`05_machine_learning/features.py`, importée à la fois par le script
+`06_machine_learning/features.py`, importée à la fois par le script
 d'entraînement et par l'application. Cette logique n'est jamais dupliquée :
 mêmes colonnes, mêmes noms, même ordre des deux côtés.
 
-### 7.2 Règle anti-fuite
+### 8.2 Règle anti-fuite
 
 La cible est `temperature_2m.shift(-H)`. Une variable n'est admissible comme
 feature que si sa valeur est réellement connue à l'instant t.
@@ -152,7 +215,7 @@ les deux décrivent le même instant. Prédire `temperature_2m(t+24)` à partir 
 `apparent_temperature(t)` est légitime. La fuite tient à l'horizon, pas à la
 variable.
 
-### 7.3 Filtrage par cohérence inter-sources
+### 8.3 Filtrage par cohérence inter-sources
 
 L'entraînement se fait sur ERA5, la production sur l'API forecast. Ces deux
 sources ne coïncident pas exactement. Mesure effectuée sur Tunis, 1 968 heures
@@ -194,7 +257,7 @@ s'applique.
 Cette mesure sera étendue aux 24 gouvernorats en phase ETL, et le tableau
 obtenu constituera une section du rapport.
 
-### 7.4 Variables construites
+### 8.4 Variables construites
 
 - **Décalages** de `temperature_2m` : t−1, t−2, t−3, t−6, t−12, t−24, t−48, t−168
 - **Décalages** des autres variables retenues : t−1, t−24
@@ -204,7 +267,7 @@ obtenu constituera une section du rapport.
 - **Encodage cyclique** : sinus et cosinus de l'heure et du jour de l'année
 - **Statiques** : latitude, longitude, altitude, `cluster_climatique`
 
-## 8. Découpage chronologique
+## 9. Découpage chronologique
 
 | Jeu | Période | Volume approximatif |
 |---|---|---|
@@ -219,9 +282,9 @@ observations futures dans l'entraînement et produit des scores faux.
 Les premières 168 heures de chaque gouvernorat sont écartées, faute de
 profondeur suffisante pour calculer les décalages.
 
-## 9. Baselines et modèles
+## 10. Baselines et modèles
 
-### 9.1 Baselines
+### 10.1 Baselines naïves
 
 Deux références obligatoires, calculées sur le jeu de test :
 
@@ -230,22 +293,60 @@ Deux références obligatoires, calculées sur le jeu de test :
    jour de l'année. Insensible à l'horizon, donc de plus en plus compétitive
    quand H augmente.
 
-Un modèle n'a d'intérêt que s'il bat nettement la meilleure des deux à chaque
-horizon.
+Ces deux références sont naïves par construction : les battre est nécessaire,
+pas suffisant.
 
-### 9.2 Modèles comparés
+### 10.2 Modèles comparés
 
-Ridge (baseline linéaire), Random Forest, XGBoost. Chacun dans un `Pipeline`
-scikit-learn, la totalité du pipeline étant sérialisée pour que l'application
-réutilise un prétraitement rigoureusement identique.
+Plusieurs familles sont mises en concurrence puis départagées sur une métrique
+unique — la MAE — selon la même démarche que les projets de classification
+précédents, où le ROC-AUC jouait ce rôle.
 
-### 9.3 Stratégie multi-horizon
+| Famille | Modèles |
+|---|---|
+| Linéaire | Régression linéaire, Ridge |
+| Voisinage | k-NN *(sous-échantillon stratifié — ne passe pas à 1,58 M lignes)* |
+| Arbres | Arbre de décision, Forêt aléatoire |
+| Boosting | XGBoost |
+
+Chacun dans un `Pipeline` scikit-learn, la totalité du pipeline étant
+sérialisée pour que l'application réutilise un prétraitement rigoureusement
+identique.
+
+### 10.3 Le tableau comparatif final
+
+Baselines naïves, modèles statistiques de la phase 05 et modèles ML sont réunis
+dans une seule comparaison, par horizon :
+
+| Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
+|---|---|---|---|---|
+| Persistance | baseline | | | |
+| Climatologie | baseline | | | |
+| ARIMA | phase 05 | | | |
+| SARIMA | phase 05 | | | |
+| Fourier + ARIMA | phase 05 | | | |
+| Ridge | phase 06 | | | |
+| Forêt aléatoire | phase 06 | | | |
+| XGBoost | phase 06 | | | |
+
+C'est ce tableau qui donne sa portée à la phase 05 : les modèles statistiques
+n'y préparent pas seulement le feature engineering, ils concourent. Battre une
+moyenne naïve ne démontre rien ; battre une régression harmonique à erreurs
+ARIMA est un résultat défendable.
+
+### 10.4 Interprétation
+
+Importance des variables et SHAP sur le modèle retenu. Contrôle spécifique :
+les décalages de température doivent dominer. Un poids anormal sur une variable
+contemporaine signalerait une fuite temporelle passée inaperçue.
+
+### 10.5 Stratégie multi-horizon
 
 Trois modèles directs indépendants, un par horizon, partageant le même
 pipeline de features. Approche préférée au schéma récursif, qui accumulerait
 l'erreur sur 72 pas successifs.
 
-### 9.4 Métriques
+### 10.6 Métriques
 
 MAE (critère de sélection), RMSE, R², et gain relatif sur chacune des deux
 baselines. Résultats ventilés par horizon et par gouvernorat.
@@ -253,7 +354,9 @@ baselines. Résultats ventilés par horizon et par gouvernorat.
 Le MAPE est écarté : la température tunisienne passe par zéro en hiver, ce qui
 fait exploser un rapport en pourcentage.
 
-## 10. Data mining
+## 11. Les deux phases d'analyse
+
+### 11.1 Data mining — dimension spatiale
 
 ACP sur les profils climatiques agrégés des 24 gouvernorats, puis K-means pour
 faire émerger les groupes climatiques. Validation de cohérence : les groupes
@@ -261,10 +364,47 @@ obtenus doivent correspondre à la géographie réelle — littoral nord, intér
 sud saharien. Le nombre de groupes est choisi par méthode du coude et score de
 silhouette.
 
+Point de vigilance : Tunis, Ariana, Ben Arous et Manouba occupent des points de
+grille quasi confondus. Leur regroupement traduirait la proximité géographique
+autant que la similarité climatique, et ne doit pas être présenté comme une
+découverte.
+
 Sortie exploitée en aval : la colonne `cluster_climatique` de
 `dim_gouvernorat`, utilisée comme variable statique par les modèles.
 
-## 11. Application web
+### 11.2 Séries temporelles — dimension temporelle
+
+Décomposition STL (cycles diurne et annuel), tests de stationnarité ADF et
+KPSS, puis ACF et PACF.
+
+**La PACF justifie le choix des décalages.** Poser des lags à t−1, t−24 et
+t−168 par intuition est une supposition ; l'autocorrélation partielle montre
+lesquels portent une information propre, une fois retiré l'effet des décalages
+intermédiaires. La phase 08 s'appuie sur ce résultat.
+
+Trois modèles statistiques, en progression délibérée :
+
+| Modèle | Capture | Ne capture pas |
+|---|---|---|
+| `ARIMA(p,d,q)` | Structure autorégressive courte | Toute saisonnalité |
+| `SARIMA(p,d,q)(P,D,Q)₂₄` | Cycle diurne | Cycle annuel |
+| Fourier + ARIMA | Cycles diurne et annuel | — |
+
+ARIMA est inclus alors qu'il va échouer : son échec démontre que la
+saisonnalité porte l'essentiel du signal.
+
+**Pourquoi Fourier plutôt qu'un SARIMA annuel.** La température horaire a deux
+périodes saisonnières, 24 h et 8 766 h. SARIMA n'en gère qu'une, et une période
+de 8 766 est numériquement infaisable — la dimension de l'espace d'états
+l'interdit. La régression harmonique contourne l'obstacle : des termes de
+Fourier entrent comme régresseurs exogènes, et ARIMA ne modélise plus que la
+structure résiduelle.
+
+Ces trois modèles sont ajustés sur un sous-ensemble de gouvernorats
+représentatifs — l'objectif est un point de comparaison, pas un modèle de
+production — et figurent au tableau comparatif de la section 10.3.
+
+## 12. Application web
 
 Enchaînement à chaque prédiction :
 
@@ -284,7 +424,7 @@ La chaîne de connexion Supabase est lue depuis un fichier `.env`, jamais
 inscrite en dur. `.env` figure dans `.gitignore` ; un `.env.example` documente
 les variables attendues.
 
-## 12. Limites assumées
+## 13. Limites assumées
 
 - **Couverture saisonnière du test de cohérence inter-sources.** L'API forecast
   ne remonte qu'à 92 jours. La comparaison ERA5/forecast ne couvrira jamais
@@ -299,9 +439,9 @@ les variables attendues.
   s'appuie sur des modèles physiques à assimilation de données. L'objectif est
   de démontrer une démarche complète, pas de rivaliser avec l'état de l'art.
 
-## 13. Livrables
+## 14. Livrables
 
 1. Dépôt GitHub public, documenté et reproductible.
-2. Rapport PDF dans `07_rapport/`.
-3. Slides dans `08_presentation/`.
+2. Rapport PDF dans `08_rapport/`.
+3. Slides dans `09_presentation/`.
 4. URL publique de l'application déployée, mentionnée dans le `README.md`.

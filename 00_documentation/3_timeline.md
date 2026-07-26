@@ -27,9 +27,10 @@ gantt
 
     section Analyse
     Data mining (ACP + clustering)  :dm, after dw, 4d
+    Series temporelles (STL, ACF)   :ts, after dm, 4d
 
     section Modelisation
-    Features et baselines           :feat, after dm, 3d
+    Features et baselines           :feat, after ts, 3d
     Entrainement multi-horizon      :ml, after feat, 5d
     Evaluation                      :eval, after ml, 3d
 
@@ -68,13 +69,15 @@ Supabase, puis rapport Power BI.
 | Supabase alimenté | Dimension et fait journalier en ligne, sous 500 Mo |
 | Rapport Power BI | Pages climatologie, extrêmes, précipitations |
 
-## Phase 3 — Data mining
+## Phase 3 — Les deux analyses
+
+Deux phases distinctes, toutes deux placées **avant** la modélisation parce que
+chacune produit quelque chose que les modèles consomment.
+
+### 3a — Data mining (dimension spatiale)
 
 ACP sur les profils climatiques agrégés, K-means, validation géographique des
 groupes obtenus.
-
-**Cette phase précède la modélisation** : elle produit la variable
-`cluster_climatique` que les modèles utiliseront.
 
 | Jalon | Critère de sortie |
 |---|---|
@@ -82,10 +85,20 @@ groupes obtenus.
 | Cohérence géographique vérifiée | Les groupes correspondent à des réalités connues |
 | `dim_gouvernorat` enrichie | Colonne `cluster_climatique` chargée |
 
+### 3b — Séries temporelles (dimension temporelle)
+
+Décomposition STL, stationnarité, ACF/PACF, puis les trois modèles statistiques.
+
+| Jalon | Critère de sortie |
+|---|---|
+| Décomposition livrée | Cycles diurne et annuel isolés |
+| Stationnarité testée | ADF et KPSS convergents |
+| **Décalages justifiés** | Choix des lags appuyé sur la PACF, pas sur l'intuition |
+| Modèles statistiques ajustés | ARIMA, SARIMA, Fourier+ARIMA, MAE aux trois horizons |
+
 ## Phase 4 — Modélisation
 
-Construction des variables, baselines, entraînement des trois modèles
-d'horizon, évaluation.
+Construction des variables, baselines, entraînement, comparaison, sélection.
 
 Ordre imposé : **les baselines d'abord**. Sans elles, aucun score de modèle
 n'est interprétable.
@@ -94,8 +107,9 @@ n'est interprétable.
 |---|---|
 | `build_features()` figée | Fonction unique, testée, sans fuite temporelle |
 | Baselines mesurées | MAE de persistance et de climatologie aux trois horizons |
-| Modèles entraînés | Ridge, Random Forest, XGBoost × 3 horizons |
-| Évaluation livrée | Gain sur baselines, par horizon et par gouvernorat |
+| Modèles entraînés | Linéaire, k-NN, arbre, forêt, XGBoost × 3 horizons |
+| Tableau comparatif | Baselines, modèles statistiques et ML réunis |
+| Modèle retenu | Sélection sur la MAE, interprétation SHAP, sérialisation |
 
 ## Phase 5 — Livraison
 
@@ -118,5 +132,8 @@ Application Streamlit, déploiement, rapport et présentation.
   retravailler les features après coup.
 - **Les baselines avant les modèles.** Entraîner d'abord et comparer ensuite
   conduit presque toujours à surestimer l'apport du modèle.
+- **La PACF avant le feature engineering.** Choisir les décalages puis chercher
+  à les justifier après coup inverse la démarche : l'analyse temporelle doit
+  précéder, sinon elle ne sert qu'à habiller une décision déjà prise.
 - **L'application dépend de `build_features()`.** Toute modification tardive de
   cette fonction impose de réentraîner les trois modèles.

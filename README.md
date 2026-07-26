@@ -63,10 +63,12 @@ flowchart TB
     PQ --> DW[02_data_warehouse<br/>schema en etoile DuckDB]
     DW --> BI[03_power_bi<br/>rapport descriptif]
     DW --> DM[04_data_mining<br/>ACP + clustering climatique]
-    DM --> ML[05_machine_learning<br/>features + modeles]
+    PQ --> TS[05_series_temporelles<br/>STL + ACF/PACF + SARIMA]
+    DM --> ML[06_machine_learning<br/>features + modeles]
+    TS --> ML
     PQ --> ML
     ML --> MOD[(modeles .joblib)]
-    MOD --> APP[06_web_app<br/>Streamlit]
+    MOD --> APP[07_web_app<br/>Streamlit]
     FC[Open-Meteo Forecast] --> APP
     APP --> SB[(Supabase<br/>logs + agregats)]
     DW -.agregat journalier.-> SB
@@ -94,16 +96,18 @@ de journalisation. **Le fait horaire ne quitte jamais le poste local.**
 | `02_data_warehouse/` | Schéma en étoile DuckDB, exports, pont Supabase |
 | `03_power_bi/` | Rapport `.pbix`, mesures DAX, captures |
 | `04_data_mining/` | ACP et clustering climatique des gouvernorats |
-| `05_machine_learning/` | `features.py` partagé, entraînement multi-horizon, évaluation |
-| `06_web_app/` | Application Streamlit et journalisation Supabase |
-| `07_rapport/` | Documentation technique et rapport final (PDF) |
-| `08_presentation/` | Slides |
+| `05_series_temporelles/` | Décomposition STL, stationnarité, ACF/PACF, baseline SARIMA |
+| `06_machine_learning/` | `features.py` partagé, entraînement multi-horizon, évaluation |
+| `07_web_app/` | Application Streamlit et journalisation Supabase |
+| `08_rapport/` | Documentation technique et rapport final (PDF) |
+| `09_presentation/` | Slides |
 | `data/` | Parquet versionné ; CSV bruts ignorés |
 | `docs/conception/` | Documents de conception |
 
-Le **data mining précède le machine learning** : les groupes climatiques qu'il
-fait émerger deviennent une variable d'entrée des modèles, au lieu d'être une
-analyse décorative posée à côté.
+**Les deux phases d'analyse encadrent la modélisation et l'alimentent.** Le
+data mining explore la dimension spatiale et produit `cluster_climatique` ; les
+séries temporelles explorent la dimension temporelle et justifient le choix des
+décalages. Aucune des deux n'est une analyse décorative posée à côté du modèle.
 
 ## Installation
 
@@ -179,9 +183,28 @@ Deux références, pas une :
 Un modèle n'a d'intérêt que s'il bat nettement la meilleure des deux, à chaque
 horizon.
 
+### Un modèle global sur 24 séries parallèles
+
+Les 24 gouvernorats forment **24 séries parallèles**, pas une seule. Un modèle
+global par horizon est entraîné sur les 24 empilées — soit 1,58 M de lignes au
+lieu de 66 000 — plutôt que 24 modèles locaux.
+
+Trois raisons : le volume d'entraînement est 24 fois supérieur et la physique
+atmosphérique apprise est commune ; les spécificités locales restent portées
+par la latitude, la longitude, l'altitude et `cluster_climatique` ; et 3
+modèles se déploient là où 72 satureraient le dépôt.
+
+L'évaluation est **ventilée par gouvernorat**, pour vérifier qu'aucun n'est
+systématiquement mal servi par le modèle commun.
+
+Conséquence technique : tout décalage doit être calculé par gouvernorat
+(`groupby("gouvernorat").shift(...)`). Un décalage global contaminerait les
+premières heures de chaque série avec les dernières du gouvernorat précédent —
+une erreur silencieuse, sans exception levée, qui fausserait ~4 000 lignes.
+
 ### Une seule fonction de features
 
-`build_features()` vit dans `05_machine_learning/features.py` et est importée
+`build_features()` vit dans `06_machine_learning/features.py` et est importée
 à la fois par l'entraînement et par l'application. Cette logique n'est jamais
 dupliquée : mêmes colonnes, mêmes noms, même ordre des deux côtés. C'est la
 garantie qu'un modèle performant en validation le reste en production.
@@ -196,9 +219,10 @@ garantie qu'un modèle performant en validation le reste en production.
 | Entrepôt et schéma en étoile | `02_data_warehouse/` | À venir |
 | Rapport Power BI | `03_power_bi/` | À venir |
 | Data mining | `04_data_mining/` | À venir |
-| Machine learning | `05_machine_learning/` | À venir |
-| Application web | `06_web_app/` | À venir |
-| Rapport et présentation | `07_rapport/`, `08_presentation/` | À venir |
+| Séries temporelles | `05_series_temporelles/` | À venir |
+| Machine learning | `06_machine_learning/` | À venir |
+| Application web | `07_web_app/` | À venir |
+| Rapport et présentation | `08_rapport/`, `09_presentation/` | À venir |
 
 La conception complète est dans
 [`docs/conception/2026-07-26-conception-projet.md`](docs/conception/2026-07-26-conception-projet.md).

@@ -18,7 +18,7 @@ flowchart LR
 
 ## Le point critique : une seule fonction de features
 
-`build_features()` est importée depuis `05_machine_learning/features.py`. Elle
+`build_features()` est importée depuis `06_machine_learning/features.py`. Elle
 n'est **jamais réécrite ici**. Mêmes colonnes, mêmes noms, même ordre qu'à
 l'entraînement — c'est ce qui garantit qu'un modèle performant en validation le
 reste en production.
@@ -38,7 +38,7 @@ face à un système opérationnel professionnel, sans prétendre le dépasser.
 ## Modèles et déploiement
 
 Les fichiers `.joblib` servis par l'application **sont versionnés** dans
-`06_web_app/models/` — Streamlit Cloud déploie depuis le dépôt et n'aurait
+`07_web_app/models/` — Streamlit Cloud déploie depuis le dépôt et n'aurait
 sinon rien à charger. Les modèles côté entraînement, eux, restent ignorés par
 Git puisqu'ils se régénèrent.
 

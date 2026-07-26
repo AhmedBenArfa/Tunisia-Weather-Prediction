@@ -13,10 +13,10 @@ data/*.csv
 !.env.example
 
 # Modeles cote entrainement : regenerables, non versionnes.
-# Le modele servi par l'app (06_web_app/models/) EST versionne, sans quoi le
+# Le modele servi par l'app (07_web_app/models/) EST versionne, sans quoi le
 # deploiement Streamlit Cloud n'a rien a charger.
-05_machine_learning/models/*.joblib
-05_machine_learning/models/*.pkl
+06_machine_learning/models/*.joblib
+06_machine_learning/models/*.pkl
 
 # Python
 __pycache__/

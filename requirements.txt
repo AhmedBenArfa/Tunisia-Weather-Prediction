@@ -6,10 +6,14 @@ pyarrow>=17.0
 # Entrepot analytique
 duckdb>=1.1
 
+# Series temporelles : STL, ADF/KPSS, ARIMA/SARIMA, termes de Fourier
+statsmodels>=0.14
+
 # Machine learning
 scikit-learn>=1.5
 xgboost>=2.1
 joblib>=1.4
+shap>=0.46
 
 # Visualisation et EDA
 matplotlib>=3.9

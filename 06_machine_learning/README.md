@@ -62,20 +62,23 @@ inclurait l'instant courant.
 
 ## Variables retenues
 
-Filtrées par cohérence entre la source d'entraînement (ERA5) et la source de
-production (API forecast) — voir `01_etl/README.md` et le document de
-conception. Ne sont gardées que celles dont les deux sources s'accordent :
+La liste des variables sources n'est **pas fixée a priori** : elle découle de la
+mesure de cohérence entre la source d'entraînement (ERA5) et la source de
+production (API forecast), conduite en phase ETL. Ne seront gardées que celles
+dont les deux sources s'accordent — voir `01_etl/README.md`.
 
-- `temperature_2m`, `apparent_temperature`
-- `pressure_msl`, `surface_pressure`
-- `shortwave_radiation`, `direct_radiation`, `diffuse_radiation`
-- `et0_fao_evapotranspiration`
-- `precipitation`, `rain`
-- `soil_temperature_*`, `soil_moisture_*`
+Variables construites, une fois cette liste arrêtée :
 
-Variables construites : décalages (t−1 à t−168), fenêtres glissantes décalées
-(24 h, 72 h, 168 h), encodage cyclique de l'heure et du jour de l'année,
-latitude, longitude, altitude, `cluster_climatique`.
+- **Décalages** de la température : t−1 à t−168, profondeurs retenues d'après
+  la PACF de la phase 05
+- **Décalages** des autres variables sélectionnées : t−1, t−24
+- **Fenêtres glissantes décalées** (`shift(1)` puis `rolling`) sur 24 h, 72 h
+  et 168 h : moyenne, minimum, maximum
+- **Encodage cyclique** de l'heure et du jour de l'année
+- **Statiques** : latitude, longitude, altitude, `cluster_climatique`
+
+> La liste définitive des variables sources sera reportée ici après exécution de
+> `01_etl/skew_analysis.py`.
 
 ## Découpage chronologique
 
@@ -152,8 +155,8 @@ sont réunis dans une même comparaison :
 
 | Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
 |---|---|---|---|---|
-| Persistance | baseline | 0,88 | 1,74 | 2,54 |
-| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
+| Persistance | baseline | | | |
+| Climatologie | baseline | | | |
 | ARIMA | phase 05 | | | |
 | SARIMA | phase 05 | | | |
 | Fourier + ARIMA | phase 05 | | | |
@@ -164,22 +167,19 @@ sont réunis dans une même comparaison :
 | Forêt aléatoire | phase 06 | | | |
 | XGBoost | phase 06 | | | |
 
-Les deux baselines sont déjà mesurées sur la période de test (217 152 lignes,
-juillet 2025 → juillet 2026). Elles fixent la barre :
+Les baselines sont calculées **avant** tout entraînement : sans elles, aucun
+score de modèle n'est interprétable. La barre à battre à chaque horizon est la
+meilleure des deux, et elle ne sera pas la même partout — la persistance domine
+aux horizons courts, la climatologie finit par la dépasser.
 
-| Horizon | Barre à battre | Difficulté |
-|---|---|---|
-| t+1 h | **0,88 °C** | Sévère — la température bouge peu en une heure |
-| t+24 h | **1,74 °C** | Atteignable, c'est là que le ML devrait briller |
-| t+72 h | **2,25 °C** | La climatologie passe devant la persistance |
+C'est aussi ce qui donne son sens à la phase 05 : elle ne se contente pas de
+préparer le feature engineering, elle **entre en concurrence**. Battre une
+moyenne naïve ne prouve pas grand-chose ; battre une régression harmonique avec
+erreurs ARIMA est un résultat.
 
-L'inversion à t+72 h justifie à elle seule d'avoir retenu deux baselines : avec
-la persistance seule, on aurait cru la barre à 2,54 °C au lieu de 2,25 °C.
-
-C'est ce qui donne son sens à la phase 05 : elle ne se contente pas de préparer
-le feature engineering, elle **entre en concurrence**. Battre une moyenne naïve
-ne prouve pas grand-chose ; battre une régression harmonique avec erreurs ARIMA
-est un résultat.
+> Toutes les valeurs de ce tableau sont produites par les scripts de la phase
+> concernée et documentées dans les notebooks correspondants. Aucune n'est
+> inscrite ici tant qu'elle n'est pas reproductible depuis le dépôt.
 
 ## Métriques
 

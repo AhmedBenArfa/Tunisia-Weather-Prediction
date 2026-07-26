@@ -154,22 +154,21 @@ parfaitement légitime. **La fuite tient à l'horizon, pas à la variable.**
 
 ### Cohérence entre source d'entraînement et source de production
 
-Le modèle s'entraîne sur ERA5 mais prédit à partir de l'API forecast. Ces deux
-sources ne coïncident pas. Mesure sur 1 968 heures communes :
+Le modèle s'entraîne sur la réanalyse ERA5 mais prédit à partir de l'API
+forecast. **Ces deux sources ne coïncident pas exactement** — un biais
+systématique sur la température d'entrée se propagerait directement dans les
+variables de décalage, et pèserait lourd face à une MAE cible de l'ordre du
+degré.
 
-| Variable | Biais | MAE/σ |
-|---|---|---|
-| `soil_temperature_0_to_7cm` | 0,000 | 0,00 |
-| `pressure_msl` | −0,20 | 0,07 |
-| `temperature_2m` | **−0,77 °C** | 0,16 |
-| `relative_humidity_2m` | **+6,25 pts** | 0,35 |
-| `cloud_cover` | **+8,38 pts** | 0,44 |
-| `wind_speed_10m` | +0,84 | 0,49 |
+Le décalage est donc mesuré variable par variable, sur les heures communes aux
+deux sources et sur les 24 gouvernorats : biais moyen, MAE, et MAE rapportée à
+l'écart-type de la variable. Seules celles dont les deux sources s'accordent
+serviront de features ; les autres restent exploitées en EDA, en Power BI et en
+data mining, où aucune contrainte de production ne s'applique.
 
-Un biais d'entrée de 0,8 °C n'est pas anodin quand la MAE visée est de l'ordre
-de 1,5 à 2 °C. Seules les variables dont les deux sources s'accordent
-(MAE/σ ≤ 0,16) servent de features. Les autres restent exploitées en EDA, en
-Power BI et en data mining, où aucune contrainte de production ne s'applique.
+> Mesure produite par `01_etl/skew_analysis.py`, documentée dans
+> `01_etl/notebooks/01_eda.ipynb`. Les valeurs et le seuil de sélection seront
+> reportés ici une fois le calcul versionné.
 
 ### Des références à trois niveaux d'exigence
 
@@ -178,18 +177,16 @@ la persistance recopie la valeur courante (`T(t+H) = T(t)`), la climatologie
 consulte la moyenne historique pour ce gouvernorat, cette heure et ce jour de
 l'année. Aucune variable explicative, aucune optimisation.
 
-Elles sont déjà mesurées sur la période de test (217 152 lignes) :
+Les deux se comportent différemment quand l'horizon grandit : la persistance se
+dégrade, puisque la situation actuelle renseigne de moins en moins ; la
+climatologie reste constante, puisqu'elle ne consulte que le calendrier.
+**Elles finissent donc par se croiser**, et c'est ce qui justifie d'en retenir
+deux plutôt qu'une — avec la persistance seule, la barre serait surestimée aux
+horizons longs.
 
-| Horizon | Persistance | Climatologie | Barre à battre |
-|---|---|---|---|
-| t+1 h | **0,88 °C** | 2,25 °C | 0,88 °C |
-| t+24 h | **1,74 °C** | 2,25 °C | 1,74 °C |
-| t+72 h | 2,54 °C | **2,25 °C** | 2,25 °C |
-
-La persistance se dégrade avec l'horizon, la climatologie reste constante — et
-**les deux se croisent entre t+24 h et t+72 h**. C'est ce croisement qui
-justifie d'en avoir retenu deux : avec la seule persistance, on aurait visé
-2,54 °C au lieu de 2,25 °C.
+> Mesure produite par `06_machine_learning/baselines.py`, documentée dans
+> `06_machine_learning/notebooks/01_ml.ipynb`. La MAE de chaque baseline aux
+> trois horizons, et l'horizon exact du croisement, seront reportés ici.
 
 **Trois modèles statistiques** ensuite, issus de la phase 05, en progression
 délibérée :
@@ -209,8 +206,8 @@ le recours aux termes de Fourier en régresseurs exogènes.
 
 | Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
 |---|---|---|---|---|
-| Persistance | baseline | 0,88 | 1,74 | 2,54 |
-| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
+| Persistance | baseline | | | |
+| Climatologie | baseline | | | |
 | ARIMA | phase 05 | | | |
 | SARIMA | phase 05 | | | |
 | Fourier + ARIMA | phase 05 | | | |

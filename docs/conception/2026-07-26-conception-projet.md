@@ -217,45 +217,46 @@ variable.
 
 ### 8.3 Filtrage par cohérence inter-sources
 
-L'entraînement se fait sur ERA5, la production sur l'API forecast. Ces deux
-sources ne coïncident pas exactement. Mesure effectuée sur Tunis, 1 968 heures
-communes (25 avril → 15 juillet 2026) :
+L'entraînement se fait sur ERA5, la production sur l'API forecast. **Ces deux
+sources ne coïncident pas exactement** : la première est une réanalyse, la
+seconde provient d'un modèle de prévision opérationnel.
 
-| Variable | Biais | MAE | MAE/σ |
-|---|---|---|---|
-| `soil_temperature_0_to_7cm` | 0,000 | 0,000 | 0,00 |
-| `soil_moisture_0_to_7cm` | 0,000 | 0,000 | 0,00 |
-| `shortwave_radiation` | +3,23 | 14,30 | 0,04 |
-| `pressure_msl` | −0,20 | 0,28 | 0,07 |
-| `et0_fao_evapotranspiration` | −0,003 | 0,018 | 0,07 |
-| `precipitation` | −0,013 | 0,021 | 0,11 |
-| `apparent_temperature` | −0,38 | 0,86 | 0,13 |
-| `temperature_2m` | −0,77 | 0,96 | 0,16 |
-| `vapour_pressure_deficit` | −0,32 | 0,37 | 0,29 |
-| `wind_gusts_10m` | −1,85 | 4,02 | 0,34 |
-| `relative_humidity_2m` | +6,25 | 7,39 | 0,35 |
-| `dew_point_2m` | +1,21 | 1,57 | 0,41 |
-| `cloud_cover` | +8,38 | 15,85 | 0,44 |
-| `wind_speed_10m` | +0,84 | 2,22 | 0,49 |
+L'enjeu est direct. Un biais systématique sur la température se propagerait
+dans toutes les variables de décalage, et pèserait lourd face à une MAE cible
+de l'ordre du degré. Une variable dont les deux sources divergent est donc un
+risque, quelle que soit sa valeur prédictive.
 
-Un biais d'entrée de 0,8 °C sur la température n'est pas négligeable face à une
-MAE cible de l'ordre de 1,5 à 2 °C. Les variables retenues comme features sont
-donc celles dont les deux sources s'accordent (MAE/σ ≤ 0,16) :
+### Protocole de mesure
 
-- `temperature_2m`, `apparent_temperature`
-- `pressure_msl`, `surface_pressure`
-- `shortwave_radiation`, `direct_radiation`, `diffuse_radiation`
-- `et0_fao_evapotranspiration`
-- `precipitation`, `rain`
-- `soil_temperature_*`, `soil_moisture_*`
+Pour chaque variable, sur les heures communes aux deux sources et sur les 24
+gouvernorats :
 
-Les variables écartées — humidité relative, point de rosée, nébulosité, vents,
-déficit de pression de vapeur — restent pleinement exploitées en EDA, dans le
-rapport Power BI et dans le data mining, où aucune contrainte de production ne
-s'applique.
+- **biais moyen** — l'écart systématique entre les deux sources ;
+- **MAE** — l'ampleur moyenne du désaccord ;
+- **MAE / σ** — ce désaccord rapporté à la variabilité propre de la variable,
+  seule grandeur comparable d'une variable à l'autre.
 
-Cette mesure sera étendue aux 24 gouvernorats en phase ETL, et le tableau
-obtenu constituera une section du rapport.
+### Règle de sélection
+
+Seules les variables dont les deux sources s'accordent servent de features. Le
+seuil sur MAE/σ sera fixé au vu de la distribution obtenue, et justifié dans le
+notebook plutôt que posé à l'avance.
+
+Les variables écartées restent pleinement exploitées en EDA, dans le rapport
+Power BI et dans le data mining, où aucune contrainte de production ne
+s'applique — le filtrage ne concerne que ce qui alimente le modèle en
+production.
+
+### Limite de la mesure
+
+L'API forecast ne remonte qu'à 92 jours. La comparaison ne couvrira donc jamais
+l'hiver, et les biais mesurés en saison chaude pourraient différer en saison
+froide. C'est une limite à assumer explicitement dans le rapport.
+
+> Mesure produite par `01_etl/skew_analysis.py`, documentée dans
+> `01_etl/notebooks/01_eda.ipynb`. Le tableau des biais par variable, le seuil
+> retenu et la liste définitive des variables sélectionnées seront reportés ici
+> une fois le calcul versionné.
 
 ### 8.4 Variables construites
 
@@ -296,27 +297,25 @@ Deux références obligatoires, calculées sur le jeu de test :
 Ces deux références sont naïves par construction : les battre est nécessaire,
 pas suffisant.
 
-Elles sont **déjà mesurées** sur la période de test (217 152 lignes,
-juillet 2025 → juillet 2026) :
+Les deux se comportent différemment selon l'horizon. La persistance se dégrade
+régulièrement, puisque la situation courante renseigne de moins en moins à
+mesure qu'on s'éloigne. La climatologie reste rigoureusement constante :
+prévoir à trois jours ne lui coûte pas plus cher qu'à une heure, puisqu'elle ne
+consulte que le calendrier.
 
-| Horizon | Persistance | Climatologie | Barre à battre |
-|---|---|---|---|
-| t+1 h | **0,88 °C** | 2,25 °C | 0,88 °C |
-| t+24 h | **1,74 °C** | 2,25 °C | 1,74 °C |
-| t+72 h | 2,54 °C | **2,25 °C** | 2,25 °C |
+**Elles finissent donc par se croiser**, et c'est précisément ce qui justifie
+d'en retenir deux plutôt qu'une. Avec la seule persistance, la barre serait
+surestimée aux horizons longs, et un modèle médiocre pourrait passer pour bon.
 
-Deux enseignements. La persistance se dégrade régulièrement avec l'horizon,
-tandis que la climatologie reste rigoureusement constante — prévoir à trois
-jours ne lui coûte pas plus cher qu'à une heure, puisqu'elle ne consulte que le
-calendrier.
+À l'inverse, la barre de t+1 h sera la plus sévère : battre la persistance à une
+heure suppose de faire mieux que « la température ne change pas en une heure »,
+ce qui est déjà une excellente approximation.
 
-Et surtout, **elles se croisent entre t+24 h et t+72 h**. C'est ce croisement
-qui justifie d'en avoir retenu deux : avec la seule persistance, la barre à
-t+72 h aurait été estimée à 2,54 °C alors qu'elle est en réalité à 2,25 °C.
-
-La barre de t+1 h est sévère : battre 0,88 °C suppose de faire mieux que
-« la température ne change pas en une heure », ce qui est déjà une très bonne
-approximation.
+> Les valeurs — MAE de chaque baseline aux trois horizons et horizon exact du
+> croisement — seront produites par `06_machine_learning/baselines.py` et
+> documentées dans `06_machine_learning/notebooks/01_ml.ipynb`, puis reportées
+> ici. Aucun chiffre n'est inscrit dans ce document tant qu'il n'est pas
+> reproductible depuis le dépôt.
 
 ### 10.2 Modèles comparés
 
@@ -367,8 +366,8 @@ dans une seule comparaison, par horizon :
 
 | Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
 |---|---|---|---|---|
-| Persistance | baseline | 0,88 | 1,74 | 2,54 |
-| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
+| Persistance | baseline | | | |
+| Climatologie | baseline | | | |
 | ARIMA | phase 05 | | | |
 | SARIMA | phase 05 | | | |
 | Fourier + ARIMA | phase 05 | | | |

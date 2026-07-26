@@ -19,9 +19,28 @@ flowchart LR
 |---|---|---|
 | `extract_openmeteo.py` | Extraction ERA5, gestion du quota, reprise sur incident | Terminé |
 | `build_parquet.py` | Concaténation des 24 CSV en un Parquet zstd | Terminé |
-| `checks.py` | Contrôles qualité (complétude, plages physiques, continuité horaire) | À venir |
+| `checks.py` | Contrôles qualité (complétude, plages physiques, continuité, frontières entre gouvernorats) | À venir |
 | `skew_analysis.py` | Comparaison ERA5 / API forecast sur les 24 gouvernorats | À venir |
+| `notebooks/_build_eda.py` | Générateur du notebook, versionné | À venir |
 | `notebooks/01_eda.ipynb` | Analyse exploratoire | À venir |
+
+## Cohérence entre source d'entraînement et source de production
+
+Le modèle s'entraînera sur la réanalyse ERA5 mais prédira à partir de l'API
+forecast. Ces deux sources ne coïncident pas exactement : la première
+reconstitue le passé, la seconde provient d'un modèle opérationnel.
+
+Un biais systématique sur la température se propagerait dans toutes les
+variables de décalage et pèserait lourd face à une MAE cible de l'ordre du
+degré. `skew_analysis.py` mesure donc, pour chaque variable et sur les 24
+gouvernorats, le biais moyen, la MAE et la MAE rapportée à l'écart-type.
+
+**C'est ce calcul qui décide** des variables admises comme features : celles
+dont les deux sources divergent sont écartées du modèle, tout en restant
+exploitées en EDA, en Power BI et en data mining.
+
+Limite connue : l'API forecast ne remonte qu'à 92 jours, la comparaison ne
+couvrira donc jamais l'hiver.
 
 ## Exécution
 

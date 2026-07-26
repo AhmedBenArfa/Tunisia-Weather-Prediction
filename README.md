@@ -63,7 +63,7 @@ flowchart TB
     PQ --> DW[02_data_warehouse<br/>schema en etoile DuckDB]
     DW --> BI[03_power_bi<br/>rapport descriptif]
     DW --> DM[04_data_mining<br/>ACP + clustering climatique]
-    PQ --> TS[05_series_temporelles<br/>STL + ACF/PACF + SARIMA]
+    PQ --> TS[05_series_temporelles<br/>STL + ACF/PACF<br/>ARIMA / SARIMA / Fourier]
     DM --> ML[06_machine_learning<br/>features + modeles]
     TS --> ML
     PQ --> ML
@@ -96,7 +96,7 @@ de journalisation. **Le fait horaire ne quitte jamais le poste local.**
 | `02_data_warehouse/` | Schéma en étoile DuckDB, exports, pont Supabase |
 | `03_power_bi/` | Rapport `.pbix`, mesures DAX, captures |
 | `04_data_mining/` | ACP et clustering climatique des gouvernorats |
-| `05_series_temporelles/` | Décomposition STL, stationnarité, ACF/PACF, baseline SARIMA |
+| `05_series_temporelles/` | STL, stationnarité, ACF/PACF, ARIMA / SARIMA / Fourier+ARIMA |
 | `06_machine_learning/` | `features.py` partagé, entraînement multi-horizon, évaluation |
 | `07_web_app/` | Application Streamlit et journalisation Supabase |
 | `08_rapport/` | Documentation technique et rapport final (PDF) |
@@ -171,17 +171,44 @@ de 1,5 à 2 °C. Seules les variables dont les deux sources s'accordent
 (MAE/σ ≤ 0,16) servent de features. Les autres restent exploitées en EDA, en
 Power BI et en data mining, où aucune contrainte de production ne s'applique.
 
-### Baselines obligatoires
+### Des références à trois niveaux d'exigence
 
-Deux références, pas une :
+**Deux baselines naïves**, d'abord :
 
 1. **Persistance** — `T(t+H) = T(t)`. Solide à t+1 h, s'effondre à t+72 h.
 2. **Climatologie** — moyenne historique pour ce gouvernorat, cette heure et ce
    jour de l'année. Insensible à l'horizon, donc de plus en plus compétitive
    quand H grandit.
 
-Un modèle n'a d'intérêt que s'il bat nettement la meilleure des deux, à chaque
-horizon.
+**Trois modèles statistiques** ensuite, issus de la phase 05, en progression
+délibérée :
+
+| Modèle | Capture | Ne capture pas |
+|---|---|---|
+| `ARIMA` | Structure autorégressive courte | Toute saisonnalité |
+| `SARIMA(m=24)` | Cycle diurne | Cycle annuel |
+| Fourier + ARIMA | Cycles diurne **et** annuel | — |
+
+ARIMA est inclus alors qu'il va échouer : son échec démontre que la
+saisonnalité porte l'essentiel du signal. Et un SARIMA à période annuelle est
+hors de portée — 8 766 pas saisonniers rendent l'espace d'états infaisable, d'où
+le recours aux termes de Fourier en régresseurs exogènes.
+
+**Le tableau qui conclut le projet** réunit tout, par horizon :
+
+| Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
+|---|---|---|---|---|
+| Persistance | baseline | | | |
+| Climatologie | baseline | | | |
+| ARIMA | phase 05 | | | |
+| SARIMA | phase 05 | | | |
+| Fourier + ARIMA | phase 05 | | | |
+| Ridge | phase 06 | | | |
+| Forêt aléatoire | phase 06 | | | |
+| XGBoost | phase 06 | | | |
+
+Battre une moyenne naïve ne démontre rien. Battre une régression harmonique à
+erreurs ARIMA est un résultat défendable.
 
 ### Un modèle global sur 24 séries parallèles
 

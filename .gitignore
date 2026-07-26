@@ -1,0 +1,35 @@
+# Donnees : le Parquet compresse (42 Mo) EST versionne, il porte tout le jeu.
+# Les CSV bruts (~308 Mo) ne le sont pas : redondants et au-dela des limites
+# GitHub. Ils se regenerent via 01_etl/extract_openmeteo.py.
+data/*.csv
+
+# Entrepot DuckDB : regenerable depuis le Parquet
+*.duckdb
+*.duckdb.wal
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Modeles cote entrainement : regenerables, non versionnes.
+# Le modele servi par l'app (06_web_app/models/) EST versionne, sans quoi le
+# deploiement Streamlit Cloud n'a rien a charger.
+05_machine_learning/models/*.joblib
+05_machine_learning/models/*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Notebooks : sorties lourdes
+*.nbconvert.ipynb
+nbconvert*.log
+
+# Systeme / editeur
+.DS_Store
+Thumbs.db
+.vscode/

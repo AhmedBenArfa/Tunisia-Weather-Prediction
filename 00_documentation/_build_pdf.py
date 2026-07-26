@@ -19,6 +19,7 @@ from pathlib import Path
 import matplotlib
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
+from fpdf.fonts import FontFace
 
 DOSSIER = Path(__file__).resolve().parent
 DOCUMENTS = [
@@ -36,9 +37,12 @@ POLICES = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
 MARINE = (11, 53, 148)
 GRIS = (95, 99, 104)
 GRIS_CLAIR = (208, 215, 222)
+BLANC = (255, 255, 255)
 FOND_CODE = (246, 248, 250)
 FOND_CITATION = (242, 242, 242)
 FOND_ENTETE = (11, 53, 148)
+# Gris tres clair des lignes alternees : doit rester lisible avec du texte noir
+FOND_LIGNE = (243, 245, 248)
 
 
 def decouper_inline(texte: str):
@@ -81,6 +85,7 @@ class Document(FPDF):
     def __init__(self, titre: str):
         super().__init__(orientation="P", unit="mm", format="A4")
         self.titre = titre
+        self.marge_gauche = 20
         self.set_auto_page_break(auto=True, margin=20)
         self.set_margins(20, 18, 20)
 
@@ -121,6 +126,7 @@ class Document(FPDF):
                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_y(52)
         self.set_text_color(0, 0, 0)
+        self.set_fill_color(*BLANC)
 
     def titre_section(self, texte: str, niveau: int):
         tailles = {2: 14, 3: 11.5, 4: 10.5}
@@ -129,7 +135,7 @@ class Document(FPDF):
             self.add_page()
         self.set_font("DJ", "B", tailles.get(niveau, 10.5))
         self.set_text_color(*MARINE)
-        self.multi_cell(0, 6.5, nettoyer(texte),
+        self.multi_cell(0, 6.5, nettoyer(texte), align="L",
                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         if niveau == 2:
             self.set_draw_color(*GRIS_CLAIR)
@@ -141,13 +147,19 @@ class Document(FPDF):
         self.set_text_color(0, 0, 0)
 
     def paragraphe(self, texte: str, puce: str = ""):
+        marge = self.marge_gauche
         if puce:
             self.set_font("DJ", "", 9.5)
-            self.set_x(self.l_margin + 3)
+            self.set_text_color(0, 0, 0)
+            self.set_x(marge + 3)
             self.cell(5, 5.2, puce)
-            gauche = self.l_margin + 8
+            gauche = marge + 8
         else:
-            gauche = self.l_margin
+            gauche = marge
+
+        # Le retour a la ligne de write() se cale sur la marge gauche courante :
+        # on la deplace le temps de l'item pour que les lignes suivantes
+        # restent alignees sous le texte, pas sous la puce.
         self.set_left_margin(gauche)
         self.set_x(gauche)
 
@@ -168,25 +180,38 @@ class Document(FPDF):
 
         self.set_text_color(0, 0, 0)
         self.ln(5.2)
-        self.set_left_margin(self.l_margin if not puce else gauche)
-        self.set_left_margin(20)
+        self.set_left_margin(marge)
+        self.set_x(marge)
         self.ln(1.6)
 
     def citation(self, lignes: list[str]):
-        texte = " ".join(nettoyer(l) for l in lignes)
-        hauteur = 5.0 * (1 + len(texte) // 95) + 4
+        """Chaque ligne du bloc citation garde sa propre ligne a l'affichage."""
+        contenu = [nettoyer(l) for l in lignes if l.strip()]
+        if not contenu:
+            return
+
+        largeur = self.w - self.l_margin - self.r_margin
+        # Estimation du nombre de lignes apres retour a la ligne automatique
+        nb_lignes = sum(max(1, -(-len(l) // 95)) for l in contenu)
+        hauteur = 5.0 * nb_lignes + 4
+
         y = self.get_y()
         self.set_fill_color(*FOND_CITATION)
-        self.rect(self.l_margin, y, self.w - self.l_margin - self.r_margin,
-                  hauteur, style="F")
+        self.rect(self.l_margin, y, largeur, hauteur, style="F")
         self.set_fill_color(*MARINE)
         self.rect(self.l_margin, y, 1.2, hauteur, style="F")
-        self.set_xy(self.l_margin + 5, y + 2)
+
         self.set_font("DJ", "I", 9)
         self.set_text_color(*GRIS)
-        self.multi_cell(self.w - self.l_margin - self.r_margin - 8, 5, texte,
-                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_y(y + 2)
+        for ligne in contenu:
+            self.set_x(self.l_margin + 5)
+            self.multi_cell(largeur - 8, 5, ligne,
+                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
         self.set_text_color(0, 0, 0)
+        self.set_fill_color(*BLANC)
+        self.set_y(y + hauteur)
         self.ln(3)
 
     def bloc_code(self, lignes: list[str], langage: str = ""):
@@ -209,6 +234,7 @@ class Document(FPDF):
             self.cell(0, 4.4, ligne[:110],
                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
+        self.set_fill_color(*BLANC)
         self.set_y(y + hauteur)
         self.ln(3)
 
@@ -218,12 +244,22 @@ class Document(FPDF):
         entete, corps = lignes[0], lignes[1:]
         self.ln(1)
         self.set_font("DJ", "", 8.2)
+        self.set_text_color(0, 0, 0)
         self.set_draw_color(*GRIS_CLAIR)
+        # La couleur de remplissage courante sert de repli si le moteur ignore
+        # cell_fill_color : sans cela, un fond fonce defini plus haut rendrait
+        # le texte noir des lignes alternees illisible.
+        self.set_fill_color(*FOND_LIGNE)
+
+        style_entete = FontFace(
+            emphasis="BOLD", color=BLANC, fill_color=MARINE
+        )
 
         with self.table(
             borders_layout="HORIZONTAL_LINES",
-            cell_fill_color=(249, 250, 251),
+            cell_fill_color=FOND_LIGNE,
             cell_fill_mode="ROWS",
+            headings_style=style_entete,
             line_height=4.8,
             text_align="LEFT",
             width=self.w - self.l_margin - self.r_margin,
@@ -231,11 +267,14 @@ class Document(FPDF):
         ) as table:
             entete_pdf = table.row()
             for cellule in entete:
-                entete_pdf.cell(nettoyer(cellule), style=None)
+                entete_pdf.cell(nettoyer(cellule))
             for ligne in corps:
                 r = table.row()
                 for cellule in ligne:
                     r.cell(nettoyer(cellule))
+
+        self.set_text_color(0, 0, 0)
+        self.set_fill_color(*BLANC)
         self.ln(3)
 
     def filet(self):
@@ -328,17 +367,24 @@ def convertir(chemin_md: Path) -> Path:
             i += 1
             continue
 
-        # Liste a puces
-        if depouillee.startswith(("- ", "* ")):
-            pdf.paragraphe(depouillee[2:], puce="•")
+        # Liste a puces et liste numerotee.
+        # Un item peut s'etendre sur plusieurs lignes : les lignes suivantes
+        # indentees en font partie et doivent etre agregees, sinon elles
+        # seraient rendues comme des paragraphes revenus a la marge gauche.
+        m_num = re.match(r"^(\d+)\.\s+(.*)", depouillee)
+        if depouillee.startswith(("- ", "* ")) or m_num:
+            if m_num:
+                puce, contenu = f"{m_num.group(1)}.", m_num.group(2)
+            else:
+                puce, contenu = "•", depouillee[2:]
             i += 1
-            continue
-
-        # Liste numerotee
-        m = re.match(r"^(\d+)\.\s+(.*)", depouillee)
-        if m:
-            pdf.paragraphe(m.group(2), puce=f"{m.group(1)}.")
-            i += 1
+            while (i < len(lignes) and lignes[i].strip()
+                   and lignes[i].startswith(("  ", "\t"))
+                   and not lignes[i].strip().startswith(("- ", "* ", "|", "```"))
+                   and not re.match(r"^\d+\.\s", lignes[i].strip())):
+                contenu += " " + lignes[i].strip()
+                i += 1
+            pdf.paragraphe(contenu, puce=puce)
             continue
 
         # Ligne vide

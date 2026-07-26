@@ -1,6 +1,6 @@
 # Conception — Prévision de température en Tunisie
 
-> Projet Intégré. Date : 2026-07-26.
+> **Auteur** : Ahmed Ben Arfa. Date : 2026-07-26.
 > Démarche CRISP-DM, alignée sur les projets ProjetIntegre (churn) et
 > BRFSS-Heart-Analytics.
 > **Statut : validé, non implémenté.**

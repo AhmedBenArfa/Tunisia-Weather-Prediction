@@ -1,5 +1,7 @@
 # Tunisia Weather Prediction — Prévision de température par gouvernorat
 
+> **Auteur** : Ahmed Ben Arfa
+
 Chaîne analytique complète, de l'extraction des données à une application web
 déployée, appliquée à la **prévision de température à court terme** pour les
 24 gouvernorats tunisiens.

@@ -98,38 +98,83 @@ scores qui ne veulent rien dire.
 
 ## Modèles comparés
 
-Comme dans les projets précédents, plusieurs familles sont mises en concurrence
-puis départagées sur une métrique unique — ici la **MAE**, là où le churn se
-tranchait au ROC-AUC.
+Sept modèles, départagés sur une métrique unique — la **MAE**, là où le churn se
+tranchait au ROC-AUC. Chacun répond à une question distincte : l'objectif n'est
+pas d'empiler des algorithmes, mais que la liste raconte une progression.
 
-| Famille | Modèles |
+| Modèle | La question à laquelle il répond |
 |---|---|
-| Linéaire | Régression linéaire, Ridge |
-| Voisinage | k-NN *(sous-échantillon — ne passe pas à 1,58 M lignes)* |
-| Arbres | Arbre de décision, Forêt aléatoire |
-| Boosting | XGBoost |
+| Régression linéaire | La relation est-elle simplement linéaire ? |
+| Ridge | La régularisation aide-t-elle face à des décalages corrélés ? |
+| Lasso | Quelles variables comptent vraiment ? |
+| k-NN | Une approche purement locale suffit-elle ? |
+| Arbre de décision | Un arbre seul capture-t-il la non-linéarité ? |
+| Forêt aléatoire | Le bagging corrige-t-il le sur-apprentissage de l'arbre ? |
+| XGBoost | Le boosting fait-il mieux que le bagging ? |
+
+**Le Lasso a un rôle particulier.** Avec une soixantaine de variables de
+décalage et de fenêtres glissantes, il en annulera une partie. Or la PACF de la
+phase 05 aura déjà répondu indépendamment à la même question. Comparer les
+deux — le Lasso retient-il les décalages que la PACF désignait ? — fait
+dialoguer les deux phases au lieu de les juxtaposer.
 
 Chacun dans un `Pipeline` scikit-learn intégralement sérialisé, pour que
-l'application applique un prétraitement rigoureusement identique.
+l'application applique un prétraitement rigoureusement identique. Trois modèles
+directs indépendants par famille, un par horizon, plutôt qu'un schéma récursif
+qui accumulerait l'erreur sur 72 pas.
 
-Trois modèles directs indépendants, un par horizon, plutôt qu'un schéma
-récursif qui accumulerait l'erreur sur 72 pas.
+## Le problème d'échelle, et le témoin qui le résout
+
+**k-NN ne passe pas à 1,58 M de lignes.** Il doit calculer la distance à chaque
+point d'entraînement pour chaque prédiction ; le coût est prohibitif. Il est
+donc entraîné sur un sous-échantillon d'environ 50 000 lignes.
+
+Cela crée un biais de comparaison : XGBoost sur 1,58 M contre k-NN sur 50 000
+n'est pas une comparaison équitable. Si k-NN perd, impossible de savoir si c'est
+l'algorithme ou le manque de données.
+
+D'où un **XGBoost témoin**, entraîné sur le même sous-échantillon. Il n'entre
+pas dans la sélection du modèle final et n'est jamais déployé — il répond à une
+seule question, isolément.
+
+| Comparaison | Volume | Modèles | Usage |
+|---|---|---|---|
+| Principale | 1 585 728 | Linéaire, Ridge, Lasso, arbre, forêt, XGBoost | Sélection et déploiement |
+| Secondaire | ~50 000 | k-NN, XGBoost témoin | Départager algorithme et volume |
+
+Le sous-échantillon est tiré **en respectant la chronologie** : il conserve la
+même partition entraînement/validation/test, sans mélange aléatoire.
 
 ## Le tableau qui conclut le projet
 
 Les baselines naïves, les modèles statistiques de la phase 05 et les modèles ML
 sont réunis dans une même comparaison :
 
-| Modèle | MAE t+1 h | MAE t+24 h | MAE t+72 h |
-|---|---|---|---|
-| Persistance | | | |
-| Climatologie | | | |
-| ARIMA | | | |
-| SARIMA | | | |
-| Fourier + ARIMA | | | |
-| Ridge | | | |
-| Forêt aléatoire | | | |
-| XGBoost | | | |
+| Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
+|---|---|---|---|---|
+| Persistance | baseline | 0,88 | 1,74 | 2,54 |
+| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
+| ARIMA | phase 05 | | | |
+| SARIMA | phase 05 | | | |
+| Fourier + ARIMA | phase 05 | | | |
+| Régression linéaire | phase 06 | | | |
+| Ridge | phase 06 | | | |
+| Lasso | phase 06 | | | |
+| Arbre de décision | phase 06 | | | |
+| Forêt aléatoire | phase 06 | | | |
+| XGBoost | phase 06 | | | |
+
+Les deux baselines sont déjà mesurées sur la période de test (217 152 lignes,
+juillet 2025 → juillet 2026). Elles fixent la barre :
+
+| Horizon | Barre à battre | Difficulté |
+|---|---|---|
+| t+1 h | **0,88 °C** | Sévère — la température bouge peu en une heure |
+| t+24 h | **1,74 °C** | Atteignable, c'est là que le ML devrait briller |
+| t+72 h | **2,25 °C** | La climatologie passe devant la persistance |
+
+L'inversion à t+72 h justifie à elle seule d'avoir retenu deux baselines : avec
+la persistance seule, on aurait cru la barre à 2,54 °C au lieu de 2,25 °C.
 
 C'est ce qui donne son sens à la phase 05 : elle ne se contente pas de préparer
 le feature engineering, elle **entre en concurrence**. Battre une moyenne naïve

@@ -173,12 +173,23 @@ Power BI et en data mining, où aucune contrainte de production ne s'applique.
 
 ### Des références à trois niveaux d'exigence
 
-**Deux baselines naïves**, d'abord :
+**Deux baselines naïves**, d'abord. Ce ne sont pas des modèles d'apprentissage :
+la persistance recopie la valeur courante (`T(t+H) = T(t)`), la climatologie
+consulte la moyenne historique pour ce gouvernorat, cette heure et ce jour de
+l'année. Aucune variable explicative, aucune optimisation.
 
-1. **Persistance** — `T(t+H) = T(t)`. Solide à t+1 h, s'effondre à t+72 h.
-2. **Climatologie** — moyenne historique pour ce gouvernorat, cette heure et ce
-   jour de l'année. Insensible à l'horizon, donc de plus en plus compétitive
-   quand H grandit.
+Elles sont déjà mesurées sur la période de test (217 152 lignes) :
+
+| Horizon | Persistance | Climatologie | Barre à battre |
+|---|---|---|---|
+| t+1 h | **0,88 °C** | 2,25 °C | 0,88 °C |
+| t+24 h | **1,74 °C** | 2,25 °C | 1,74 °C |
+| t+72 h | 2,54 °C | **2,25 °C** | 2,25 °C |
+
+La persistance se dégrade avec l'horizon, la climatologie reste constante — et
+**les deux se croisent entre t+24 h et t+72 h**. C'est ce croisement qui
+justifie d'en avoir retenu deux : avec la seule persistance, on aurait visé
+2,54 °C au lieu de 2,25 °C.
 
 **Trois modèles statistiques** ensuite, issus de la phase 05, en progression
 délibérée :
@@ -198,17 +209,33 @@ le recours aux termes de Fourier en régresseurs exogènes.
 
 | Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
 |---|---|---|---|---|
-| Persistance | baseline | | | |
-| Climatologie | baseline | | | |
+| Persistance | baseline | 0,88 | 1,74 | 2,54 |
+| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
 | ARIMA | phase 05 | | | |
 | SARIMA | phase 05 | | | |
 | Fourier + ARIMA | phase 05 | | | |
+| Régression linéaire | phase 06 | | | |
 | Ridge | phase 06 | | | |
+| Lasso | phase 06 | | | |
+| Arbre de décision | phase 06 | | | |
 | Forêt aléatoire | phase 06 | | | |
 | XGBoost | phase 06 | | | |
 
 Battre une moyenne naïve ne démontre rien. Battre une régression harmonique à
 erreurs ARIMA est un résultat défendable.
+
+**Sept modèles de machine learning**, enfin, choisis pour que la liste raconte
+une progression plutôt que d'empiler des algorithmes : la régression linéaire
+teste si la relation est linéaire, Ridge si la régularisation aide face à des
+décalages corrélés, Lasso quelles variables comptent — et ses variables
+retenues se confrontent à ce que la PACF de la phase 05 désignait. L'arbre
+sur-apprend, la forêt corrige par moyennage, le boosting corrige
+séquentiellement.
+
+k-NN ne passant pas à 1,58 M de lignes, il est entraîné sur ~50 000 lignes, avec
+un **XGBoost témoin** sur le même sous-échantillon — sans quoi on ne saurait pas
+si k-NN perd à cause de l'algorithme ou du volume. Ce témoin n'entre pas dans la
+sélection du modèle déployé, qui reste entraîné à pleine échelle.
 
 ### Un modèle global sur 24 séries parallèles
 

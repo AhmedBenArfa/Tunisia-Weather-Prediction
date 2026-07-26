@@ -106,8 +106,9 @@ n'est interprétable.
 | Jalon | Critère de sortie |
 |---|---|
 | `build_features()` figée | Fonction unique, testée, sans fuite temporelle |
-| Baselines mesurées | MAE de persistance et de climatologie aux trois horizons |
-| Modèles entraînés | Linéaire, k-NN, arbre, forêt, XGBoost × 3 horizons |
+| Baselines mesurées | **Fait** — 0,88 / 1,74 / 2,54 °C (persistance), 2,25 °C (climatologie) |
+| Modèles entraînés | Linéaire, Ridge, Lasso, arbre, forêt, XGBoost × 3 horizons |
+| Comparaison témoin | k-NN et XGBoost témoin sur ~50 000 lignes, à armes égales |
 | Tableau comparatif | Baselines, modèles statistiques et ML réunis |
 | Modèle retenu | Sélection sur la MAE, interprétation SHAP, sérialisation |
 

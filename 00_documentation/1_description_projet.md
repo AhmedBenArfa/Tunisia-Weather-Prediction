@@ -114,12 +114,17 @@ reçoit une prévision calculée à partir de données fraîches, et peut la com
 
 | Critère | Seuil |
 |---|---|
-| Le modèle bat la meilleure baseline à t+1 h | Gain en MAE mesurable |
-| Le modèle bat la meilleure baseline à t+24 h | Gain net et documenté |
-| Le modèle bat la meilleure baseline à t+72 h | Gain net, ou constat argumenté de son absence |
+| Le modèle bat la meilleure baseline à t+1 h | MAE < 0,88 °C |
+| Le modèle bat la meilleure baseline à t+24 h | MAE < 1,74 °C |
+| Le modèle bat la meilleure baseline à t+72 h | MAE < 2,25 °C, ou constat argumenté |
 | Absence de fuite temporelle | Vérifiée par construction et par l'écart validation/test |
 | Cohérence entraînement / production | Écart mesuré et variables filtrées en conséquence |
 | Reproductibilité | Pipeline ré-exécutable depuis le dépôt seul |
+
+Ces seuils ne sont pas théoriques : ils proviennent des deux baselines
+mesurées sur la période de test. La barre de t+1 h est la plus sévère — battre
+0,88 °C suppose de faire mieux que « la température ne change pas en une
+heure », ce qui est déjà une excellente approximation.
 
 Le troisième critère mérite une précision : **si le modèle ne bat pas la
 climatologie à 72 h, ce n'est pas un échec du projet.** C'est un résultat, et

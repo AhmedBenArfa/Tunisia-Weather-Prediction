@@ -296,36 +296,86 @@ Deux références obligatoires, calculées sur le jeu de test :
 Ces deux références sont naïves par construction : les battre est nécessaire,
 pas suffisant.
 
+Elles sont **déjà mesurées** sur la période de test (217 152 lignes,
+juillet 2025 → juillet 2026) :
+
+| Horizon | Persistance | Climatologie | Barre à battre |
+|---|---|---|---|
+| t+1 h | **0,88 °C** | 2,25 °C | 0,88 °C |
+| t+24 h | **1,74 °C** | 2,25 °C | 1,74 °C |
+| t+72 h | 2,54 °C | **2,25 °C** | 2,25 °C |
+
+Deux enseignements. La persistance se dégrade régulièrement avec l'horizon,
+tandis que la climatologie reste rigoureusement constante — prévoir à trois
+jours ne lui coûte pas plus cher qu'à une heure, puisqu'elle ne consulte que le
+calendrier.
+
+Et surtout, **elles se croisent entre t+24 h et t+72 h**. C'est ce croisement
+qui justifie d'en avoir retenu deux : avec la seule persistance, la barre à
+t+72 h aurait été estimée à 2,54 °C alors qu'elle est en réalité à 2,25 °C.
+
+La barre de t+1 h est sévère : battre 0,88 °C suppose de faire mieux que
+« la température ne change pas en une heure », ce qui est déjà une très bonne
+approximation.
+
 ### 10.2 Modèles comparés
 
-Plusieurs familles sont mises en concurrence puis départagées sur une métrique
-unique — la MAE — selon la même démarche que les projets de classification
-précédents, où le ROC-AUC jouait ce rôle.
+Sept modèles, départagés sur une métrique unique — la MAE — selon la même
+démarche que les projets de classification précédents, où le ROC-AUC jouait ce
+rôle. Chacun répond à une question distincte : la liste doit raconter une
+progression, pas empiler des algorithmes.
 
-| Famille | Modèles |
+| Modèle | Question |
 |---|---|
-| Linéaire | Régression linéaire, Ridge |
-| Voisinage | k-NN *(sous-échantillon stratifié — ne passe pas à 1,58 M lignes)* |
-| Arbres | Arbre de décision, Forêt aléatoire |
-| Boosting | XGBoost |
+| Régression linéaire | La relation est-elle simplement linéaire ? |
+| Ridge | La régularisation aide-t-elle face à des décalages corrélés ? |
+| Lasso | Quelles variables comptent vraiment ? |
+| k-NN | Une approche purement locale suffit-elle ? |
+| Arbre de décision | Un arbre seul capture-t-il la non-linéarité ? |
+| Forêt aléatoire | Le bagging corrige-t-il le sur-apprentissage de l'arbre ? |
+| XGBoost | Le boosting fait-il mieux que le bagging ? |
+
+Le Lasso occupe une place particulière : il annulera une partie des variables
+de décalage, et la comparaison entre celles qu'il retient et celles que la PACF
+de la phase 05 désignait fait dialoguer les deux phases.
 
 Chacun dans un `Pipeline` scikit-learn, la totalité du pipeline étant
 sérialisée pour que l'application réutilise un prétraitement rigoureusement
 identique.
 
-### 10.3 Le tableau comparatif final
+### 10.3 Contrainte d'échelle et comparaison témoin
+
+k-NN ne passe pas à 1,58 M de lignes : le calcul de distance à chaque point
+d'entraînement rend la prédiction prohibitive. Il est entraîné sur un
+sous-échantillon d'environ 50 000 lignes, tiré **en respectant la partition
+chronologique**.
+
+Comparer alors k-NN à un XGBoost entraîné sur trente fois plus de données
+serait malhonnête. Un **XGBoost témoin** est donc entraîné sur le même
+sous-échantillon. Il n'entre pas dans la sélection du modèle final et n'est
+jamais déployé.
+
+| Comparaison | Volume | Modèles | Usage |
+|---|---|---|---|
+| Principale | 1 585 728 | Linéaire, Ridge, Lasso, arbre, forêt, XGBoost | Sélection, déploiement |
+| Secondaire | ~50 000 | k-NN, XGBoost témoin | Départager algorithme et volume |
+
+### 10.4 Le tableau comparatif final
 
 Baselines naïves, modèles statistiques de la phase 05 et modèles ML sont réunis
 dans une seule comparaison, par horizon :
 
 | Modèle | Origine | MAE t+1 h | MAE t+24 h | MAE t+72 h |
 |---|---|---|---|---|
-| Persistance | baseline | | | |
-| Climatologie | baseline | | | |
+| Persistance | baseline | 0,88 | 1,74 | 2,54 |
+| Climatologie | baseline | 2,25 | 2,25 | 2,25 |
 | ARIMA | phase 05 | | | |
 | SARIMA | phase 05 | | | |
 | Fourier + ARIMA | phase 05 | | | |
+| Régression linéaire | phase 06 | | | |
 | Ridge | phase 06 | | | |
+| Lasso | phase 06 | | | |
+| Arbre de décision | phase 06 | | | |
 | Forêt aléatoire | phase 06 | | | |
 | XGBoost | phase 06 | | | |
 
@@ -334,19 +384,19 @@ n'y préparent pas seulement le feature engineering, ils concourent. Battre une
 moyenne naïve ne démontre rien ; battre une régression harmonique à erreurs
 ARIMA est un résultat défendable.
 
-### 10.4 Interprétation
+### 10.5 Interprétation
 
 Importance des variables et SHAP sur le modèle retenu. Contrôle spécifique :
 les décalages de température doivent dominer. Un poids anormal sur une variable
 contemporaine signalerait une fuite temporelle passée inaperçue.
 
-### 10.5 Stratégie multi-horizon
+### 10.6 Stratégie multi-horizon
 
 Trois modèles directs indépendants, un par horizon, partageant le même
 pipeline de features. Approche préférée au schéma récursif, qui accumulerait
 l'erreur sur 72 pas successifs.
 
-### 10.6 Métriques
+### 10.7 Métriques
 
 MAE (critère de sélection), RMSE, R², et gain relatif sur chacune des deux
 baselines. Résultats ventilés par horizon et par gouvernorat.

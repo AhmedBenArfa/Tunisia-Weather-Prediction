@@ -1,0 +1,25 @@
+# Extraction et manipulation des donnees
+pandas>=2.2
+requests>=2.32
+pyarrow>=17.0
+
+# Entrepot analytique
+duckdb>=1.1
+
+# Machine learning
+scikit-learn>=1.5
+xgboost>=2.1
+joblib>=1.4
+
+# Visualisation et EDA
+matplotlib>=3.9
+seaborn>=0.13
+jupyter>=1.1
+
+# Application web
+streamlit>=1.57
+python-dotenv>=1.0
+
+# Connexion Supabase (Postgres)
+psycopg2-binary>=2.9
+sqlalchemy>=2.0

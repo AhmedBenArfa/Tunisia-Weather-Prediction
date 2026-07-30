@@ -61,7 +61,9 @@ def decouper_inline(texte: str):
         if m.start() > position:
             segments.append((texte[position:m.start()], "", None))
         if m.group("gras") is not None:
-            segments.append((m.group("gras"), "B", None))
+            # Le gras ne peut pas contenir de style imbrique : on retire les
+            # backticks plutot que de les afficher tels quels.
+            segments.append((m.group("gras").replace("`", ""), "B", None))
         elif m.group("code") is not None:
             segments.append((m.group("code"), "C", None))
         else:
@@ -123,7 +125,7 @@ class Document(FPDF):
         self.set_font("DJ", "B", 19)
         self.set_text_color(255, 255, 255)
         self.multi_cell(self.w - self.l_margin - self.r_margin, 9, texte,
-                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                        align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_y(52)
         self.set_text_color(0, 0, 0)
         self.set_fill_color(*BLANC)

@@ -1,4 +1,4 @@
-# 06 — Application web
+# 07 — Application web
 
 Application Streamlit exposant les modèles de prévision, déployée sur Streamlit
 Cloud avec journalisation des prédictions dans Supabase.

@@ -1,4 +1,4 @@
-# 05 — Machine learning
+# 06 — Machine learning
 
 Prévision de température à t+1 h, t+24 h et t+72 h. Régression sur série
 temporelle.

@@ -48,15 +48,16 @@ aucune valeur manquante, aucun doublon, continuité horaire parfaite.
 
 Conception du projet rédigée et validée.
 
-**Reste à faire** : contrôles qualité automatisés (`checks.py`), correction des
-humidités de sol négatives, analyse exploratoire, et extension de la mesure du
-décalage ERA5/forecast aux 24 gouvernorats.
+**Phase terminée.** Contrôles automatisés (16 tests), correction des humidités
+de sol négatives, mesure du décalage ERA5/forecast sur les 24 gouvernorats, et
+notebook d'analyse exploratoire exécuté.
 
-| Jalon | Critère de sortie |
-|---|---|
-| Jeu de données validé | Contrôles automatisés passants |
-| EDA livrée | Notebook exécuté, contrastes régionaux caractérisés |
-| Décalage train/prod quantifié | Tableau sur les 24 gouvernorats |
+| Jalon | Critère de sortie | État |
+|---|---|---|
+| Jeu de données validé | Contrôles automatisés passants | Fait |
+| Anomalies corrigées | `tunisia_weather_clean.parquet` écrit | Fait |
+| Décalage train/prod quantifié | Tableau sur les 24 gouvernorats | Fait — 17 variables retenues sur 31 |
+| EDA livrée | Notebook exécuté, contrastes régionaux caractérisés | Fait |
 
 ## Phase 2 — Entrepôt et restitution descriptive
 

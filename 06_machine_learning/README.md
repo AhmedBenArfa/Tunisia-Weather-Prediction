@@ -62,12 +62,41 @@ inclurait l'instant courant.
 
 ## Variables retenues
 
-La liste des variables sources n'est **pas fixée a priori** : elle découle de la
-mesure de cohérence entre la source d'entraînement (ERA5) et la source de
-production (API forecast), conduite en phase ETL. Ne seront gardées que celles
-dont les deux sources s'accordent — voir `01_etl/README.md`.
+La liste découle de la mesure de cohérence entre la source d'entraînement
+(ERA5) et la source de production (API forecast), conduite sur les 24
+gouvernorats. Seuil retenu : **MAE/σ ≤ 0,20**, placé dans la rupture nette du
+classement.
 
-Variables construites, une fois cette liste arrêtée :
+**17 variables retenues**
+
+| Famille | Variables |
+|---|---|
+| Température | `temperature_2m`, `apparent_temperature` |
+| Pression | `pressure_msl` |
+| Rayonnement | `shortwave_radiation`, `direct_radiation`, `diffuse_radiation`, `direct_normal_irradiance`, `terrestrial_radiation` |
+| Sol | `soil_temperature_*` (3 couches), `soil_moisture_*` (3 couches) |
+| Eau | `precipitation`, `rain`, `et0_fao_evapotranspiration` |
+
+**14 écartées** : `surface_pressure`, les quatre nébulosités, les cinq
+variables de vent, `relative_humidity_2m`, `dew_point_2m`,
+`vapour_pressure_deficit`. Plus `snowfall`, non évaluable.
+
+Deux résultats méritent d'être signalés. **`surface_pressure` est écartée
+(MAE/σ = 0,669) alors que `pressure_msl` est retenue (0,088)** : la pression de
+surface dépend de l'altitude du relief telle que chaque modèle la représente,
+et les deux modèles ne partagent pas le même relief ; la pression ramenée au
+niveau de la mer est normalisée, d'où son accord. Sans cette mesure, la
+variable serait entrée dans le modèle.
+
+**`terrestrial_radiation` et les variables de sol sont identiques au millième**
+entre les deux sources — pour le rayonnement terrestre c'est attendu, il est
+purement astronomique.
+
+> Source : `01_etl/skew_analysis.py`. Détail par gouvernorat dans
+> `data/skew_era5_forecast.csv`, analyse et justification du seuil dans
+> `01_etl/notebooks/01_eda.ipynb` §5.
+
+Variables construites à partir de cette liste :
 
 - **Décalages** de la température : t−1 à t−168, profondeurs retenues d'après
   la PACF de la phase 05
@@ -77,8 +106,6 @@ Variables construites, une fois cette liste arrêtée :
 - **Encodage cyclique** de l'heure et du jour de l'année
 - **Statiques** : latitude, longitude, altitude, `cluster_climatique`
 
-> La liste définitive des variables sources sera reportée ici après exécution de
-> `01_etl/skew_analysis.py`.
 
 ## Découpage chronologique
 

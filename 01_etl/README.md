@@ -15,14 +15,50 @@ flowchart LR
 
 ## Fichiers
 
-| Fichier | Rôle | État |
-|---|---|---|
-| `extract_openmeteo.py` | Extraction ERA5, gestion du quota, reprise sur incident | Terminé |
-| `build_parquet.py` | Concaténation des 24 CSV en un Parquet zstd | Terminé |
-| `checks.py` | Contrôles qualité (complétude, plages physiques, continuité, frontières entre gouvernorats) | À venir |
-| `skew_analysis.py` | Comparaison ERA5 / API forecast sur les 24 gouvernorats | À venir |
-| `notebooks/_build_eda.py` | Générateur du notebook, versionné | À venir |
-| `notebooks/01_eda.ipynb` | Analyse exploratoire | À venir |
+| Fichier | Rôle |
+|---|---|
+| `config.py` | Chemins, plages physiques admissibles |
+| `extract_openmeteo.py` | Extraction ERA5, gestion du quota, reprise sur incident |
+| `build_parquet.py` | Concaténation des 24 CSV en un Parquet zstd |
+| `checks.py` | Contrôles qualité, sans effet de bord |
+| `clean.py` | Correction des anomalies connues |
+| `run_etl.py` | Orchestrateur : charge → contrôle → nettoie → écrit |
+| `skew_analysis.py` | Comparaison ERA5 / API forecast sur les 24 gouvernorats |
+| `notebooks/_build_eda.py` | Générateur du notebook, versionné |
+| `notebooks/01_eda.ipynb` | Analyse exploratoire, généré |
+
+## Exécution
+
+```bash
+python 01_etl/run_etl.py                  # controles + nettoyage -> Parquet propre
+python 01_etl/skew_analysis.py            # decalage inter-sources (reseau, ~2 min)
+python 01_etl/notebooks/_build_eda.py     # (re)genere le notebook
+python -m nbconvert --to notebook --execute --inplace 01_etl/notebooks/01_eda.ipynb
+python -m pytest tests/ -v                # 16 tests
+```
+
+Le notebook ne s'édite **jamais** à la main : on modifie `_build_eda.py` puis on
+régénère.
+
+## Ce que les contrôles ont trouvé
+
+Sur les 1 585 728 lignes : aucune valeur manquante, aucun doublon, continuité
+horaire parfaite (tous les intervalles valent exactement une heure), 24
+gouvernorats.
+
+Une seule famille d'anomalies — les humidités de sol négatives, physiquement
+impossibles : 493, 460 et 428 valeurs selon la couche, soit 0,03 %, concentrées
+sur les gouvernorats arides du sud. Artefact numérique de la réanalyse sur sols
+très secs. `clean.py` les ramène à zéro, et le second passage des contrôles ne
+remonte plus rien.
+
+## Le contrôle qui compte pour la suite
+
+`verifier_decalage_groupe(df, colonne, horizon)` vérifie qu'un décalage a bien
+été calculé **par gouvernorat**. Un `shift()` global contamine les premières
+heures de chaque série avec les dernières de la précédente — sans exception, et
+donc invisible. Ce garde-fou resservira en phase 06 pour valider
+`build_features()`.
 
 ## Cohérence entre source d'entraînement et source de production
 

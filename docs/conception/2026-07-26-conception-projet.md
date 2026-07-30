@@ -25,8 +25,8 @@ de la fuite temporelle — structurent toute la conception.
 | Phase CRISP-DM | Dossier | Contenu |
 |---|---|---|
 | Business Understanding | `00_documentation/` | Cadrage, objectifs, critères de succès |
-| Data Understanding | `01_etl/` | Extraction, contrôles qualité, EDA |
-| Data Preparation | `02_data_warehouse/` | Nettoyage, schéma en étoile, agrégats |
+| Data Understanding | `01_etl/` | Extraction, contrôles qualité, nettoyage, EDA |
+| Data Preparation | `02_data_warehouse/` | Schéma en étoile, agrégats |
 | — (restitution descriptive) | `03_power_bi/` | Rapport Power BI, mesures DAX |
 | Data Understanding (spatial) | `04_data_mining/` | ACP, clustering climatique |
 | Data Understanding (temporel) | `05_series_temporelles/` | STL, stationnarité, ACF/PACF, ARIMA/SARIMA/Fourier |
@@ -100,7 +100,7 @@ Open-Meteo fournit les entrées fraîches, Supabase enregistre le résultat.
 
 ```
 00_documentation/   Cadrage, description des données, planning, guide technique
-01_etl/             Extraction Open-Meteo, contrôles qualité, EDA
+01_etl/             Extraction, contrôles, nettoyage, décalage inter-sources, EDA
 02_data_warehouse/  Schéma en étoile DuckDB, exports Parquet, pont Supabase
 03_power_bi/        Rapport .pbix, mesures DAX, captures
 04_data_mining/     ACP, clustering climatique des gouvernorats
@@ -236,27 +236,76 @@ gouvernorats :
 - **MAE / σ** — ce désaccord rapporté à la variabilité propre de la variable,
   seule grandeur comparable d'une variable à l'autre.
 
+### Résultat sur les 24 gouvernorats
+
+1 872 heures communes par gouvernorat (25 avril → 15 juillet 2026).
+
+| Variable | Biais | MAE | MAE/σ |
+|---|---|---|---|
+| `soil_moisture_*` (3 couches) | 0,000 | 0,000 | 0,000 |
+| `terrestrial_radiation` | +0,002 | 0,129 | 0,000 |
+| `soil_temperature_*` (3 couches) | −0,023 | 0,077 | 0,012 – 0,021 |
+| `shortwave_radiation` | +2,800 | 16,342 | 0,047 |
+| `rain` | −0,013 | 0,014 | 0,070 |
+| `precipitation` | −0,007 | 0,016 | 0,083 |
+| `pressure_msl` | −0,224 | 0,350 | 0,088 |
+| `et0_fao_evapotranspiration` | −0,003 | 0,027 | 0,103 |
+| `direct_radiation` | +6,846 | 29,361 | 0,108 |
+| `direct_normal_irradiance` | +11,665 | 44,349 | 0,141 |
+| `temperature_2m` | −0,146 | 0,878 | 0,152 |
+| `diffuse_radiation` | −4,046 | 14,743 | 0,158 |
+| `apparent_temperature` | +0,126 | 1,038 | 0,164 |
+| — seuil 0,20 — | | | |
+| `vapour_pressure_deficit` | −0,082 | 0,286 | 0,235 |
+| `cloud_cover_high` | +0,331 | 9,496 | 0,266 |
+| `relative_humidity_2m` | +2,155 | 5,754 | 0,295 |
+| `dew_point_2m` | +0,539 | 1,538 | 0,392 |
+| `cloud_cover` | +8,690 | 15,994 | 0,437 |
+| `wind_speed_10m` | −0,229 | 2,608 | 0,458 |
+| `cloud_cover_mid` | +7,937 | 10,353 | 0,541 |
+| `surface_pressure` | −0,503 | 2,609 | 0,669 |
+| `cloud_cover_low` | +3,952 | 4,244 | 0,671 |
+
 ### Règle de sélection
 
-Seules les variables dont les deux sources s'accordent servent de features. Le
-seuil sur MAE/σ sera fixé au vu de la distribution obtenue, et justifié dans le
-notebook plutôt que posé à l'avance.
+Le classement présente une rupture nette entre 0,164 et 0,235 — le saut le plus
+large de la zone. Le seuil est placé à **0,20** dans cet intervalle : il
+découle de la distribution observée, il n'est pas un chiffre rond posé
+d'avance. **17 variables sur 31 sont retenues.**
+
+Deux résultats méritent attention.
+
+**`surface_pressure` est écartée quand `pressure_msl` est retenue.** La
+pression de surface dépend de l'altitude du relief telle que chaque modèle la
+représente ; les deux modèles ne partagent pas le même relief. La pression
+ramenée au niveau de la mer est normalisée, d'où son excellent accord. Sans
+cette mesure, `surface_pressure` serait entrée dans le modèle.
+
+**Le biais de température est bien plus faible qu'estimé initialement** :
+−0,146 °C sur les 24 gouvernorats, contre −0,77 °C sur la seule mesure de Tunis
+faite en phase de conception. Tunis n'était pas représentatif.
 
 Les variables écartées restent pleinement exploitées en EDA, dans le rapport
 Power BI et dans le data mining, où aucune contrainte de production ne
-s'applique — le filtrage ne concerne que ce qui alimente le modèle en
-production.
+s'applique.
 
-### Limite de la mesure
+### Limites de la mesure
 
-L'API forecast ne remonte qu'à 92 jours. La comparaison ne couvrira donc jamais
-l'hiver, et les biais mesurés en saison chaude pourraient différer en saison
-froide. C'est une limite à assumer explicitement dans le rapport.
+**Couverture saisonnière partielle.** L'API forecast ne remonte qu'à 92 jours :
+la comparaison ne couvrira jamais l'hiver, et les biais mesurés en saison
+chaude pourraient différer en saison froide.
 
-> Mesure produite par `01_etl/skew_analysis.py`, documentée dans
-> `01_etl/notebooks/01_eda.ipynb`. Le tableau des biais par variable, le seuil
-> retenu et la liste définitive des variables sélectionnées seront reportés ici
-> une fois le calcul versionné.
+**Variables sans variance.** `snowfall` ressort indéterminée — il n'a pas neigé
+sur la fenêtre, son écart-type est nul et le rapport indéfini. La méthode ne
+peut pas juger une variable constante.
+
+**Variables circulaires.** Les MAE sur `wind_direction_10m` et
+`wind_direction_100m` ne sont pas interprétables : 359° et 1° sont voisins mais
+donnent un écart de 358. Elles sont écartées par ailleurs, mais leur valeur ne
+constitue pas une mesure valide.
+
+> Source : `01_etl/skew_analysis.py`, détail par gouvernorat dans
+> `data/skew_era5_forecast.csv`, analyse dans `01_etl/notebooks/01_eda.ipynb` §5.
 
 ### 8.4 Variables construites
 

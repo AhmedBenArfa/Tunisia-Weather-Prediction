@@ -160,15 +160,35 @@ systématique sur la température d'entrée se propagerait directement dans les
 variables de décalage, et pèserait lourd face à une MAE cible de l'ordre du
 degré.
 
-Le décalage est donc mesuré variable par variable, sur les heures communes aux
-deux sources et sur les 24 gouvernorats : biais moyen, MAE, et MAE rapportée à
-l'écart-type de la variable. Seules celles dont les deux sources s'accordent
-serviront de features ; les autres restent exploitées en EDA, en Power BI et en
-data mining, où aucune contrainte de production ne s'applique.
+Le décalage est mesuré variable par variable, sur les 24 gouvernorats et
+1 872 heures communes : biais moyen, MAE, et MAE rapportée à l'écart-type —
+seule grandeur comparable entre unités différentes.
 
-> Mesure produite par `01_etl/skew_analysis.py`, documentée dans
-> `01_etl/notebooks/01_eda.ipynb`. Les valeurs et le seuil de sélection seront
-> reportés ici une fois le calcul versionné.
+| Variable | Biais | MAE/σ | |
+|---|---|---|---|
+| `soil_moisture_*`, `terrestrial_radiation` | 0,000 | **0,000** | retenue |
+| `pressure_msl` | −0,224 | **0,088** | retenue |
+| `temperature_2m` | −0,146 | **0,152** | retenue |
+| `apparent_temperature` | +0,126 | **0,164** | retenue |
+| `relative_humidity_2m` | +2,155 | 0,295 | écartée |
+| `cloud_cover` | +8,690 | 0,437 | écartée |
+| `wind_speed_10m` | −0,229 | 0,458 | écartée |
+| `surface_pressure` | −0,503 | 0,669 | écartée |
+
+Le classement présente une rupture nette entre 0,164 et 0,235 : le seuil est
+placé à **0,20** dans cet intervalle, ce qui retient **17 variables sur 31**.
+
+`surface_pressure` est le cas instructif : écartée à 0,669 quand `pressure_msl`
+tient à 0,088. La pression de surface dépend de l'altitude du relief telle que
+chaque modèle la représente, et les deux modèles ne partagent pas le même
+relief ; la pression ramenée au niveau de la mer est normalisée. Sans cette
+mesure, la variable serait entrée dans le modèle.
+
+Les variables écartées restent exploitées en EDA, en Power BI et en data
+mining, où aucune contrainte de production ne s'applique.
+
+> Source : `01_etl/skew_analysis.py`, détail par gouvernorat dans
+> `data/skew_era5_forecast.csv`, analyse dans `01_etl/notebooks/01_eda.ipynb` §5.
 
 ### Des références à trois niveaux d'exigence
 
@@ -266,7 +286,7 @@ garantie qu'un modèle performant en validation le reste en production.
 |---|---|---|
 | Conception | `docs/conception/` | Terminé |
 | Extraction des données | `01_etl/` | Terminé — 1 585 728 lignes |
-| Contrôles qualité et EDA | `01_etl/` | À venir |
+| Contrôles qualité, nettoyage, EDA | `01_etl/` | Terminé — 16 tests, notebook exécuté |
 | Entrepôt et schéma en étoile | `02_data_warehouse/` | À venir |
 | Rapport Power BI | `03_power_bi/` | À venir |
 | Data mining | `04_data_mining/` | À venir |

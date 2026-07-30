@@ -2,6 +2,9 @@
 # Les CSV bruts (~308 Mo) ne le sont pas : redondants et au-dela des limites
 # GitHub. Ils se regenerent via 01_etl/extract_openmeteo.py.
 data/*.csv
+# Exception : les resultats d'analyse sont legers et doivent etre versionnes,
+# c'est la preuve reproductible derriere les chiffres de la documentation.
+!data/skew_era5_forecast.csv
 
 # Entrepot DuckDB : regenerable depuis le Parquet
 *.duckdb

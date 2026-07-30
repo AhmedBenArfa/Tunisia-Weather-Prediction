@@ -25,6 +25,9 @@ nbformat>=5.10
 # livrees avec matplotlib : aucune installation LaTeX n'est requise)
 fpdf2>=2.8
 
+# Tests
+pytest>=8.0
+
 # Application web
 streamlit>=1.57
 python-dotenv>=1.0
